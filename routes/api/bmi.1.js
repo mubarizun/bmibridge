@@ -1,0 +1,245 @@
+const express = require("express");
+const router = express.Router();
+const jwt = require('jsonwebtoken');
+const cachePool = require('../../config/cache_pool');
+const inquiry = require('../utils/inquiry');
+const payment = require('../utils/payment');
+const log = require('log-to-file');
+
+const secretOrKey = process.env.secretOrKey;
+
+const getUsernamesCache = async (username) => {
+  return new Promise(async (resolve, reject) => {
+    let conn;
+    try {
+      conn = await cachePool.getConnection();
+      conn.query(`select username from usernames where username='${username}'`).then(rows => {
+        if (rows[0] === undefined){
+          reject({message:"No username listed"});
+        }else{
+          resolve({username:rows[0].username});
+        }
+      })
+    } catch (err) {
+      throw err;
+    } finally {
+      if (conn) {
+        return conn.end();
+      }
+    }
+  });
+}
+
+// @route   POST api/bmi/signon
+router.post("/signon", (req, res) => {
+  jwt.verify(req.body.token, secretOrKey, (err, decoded) => {
+    if (!err) { // If JWT valid
+      const addUsername = async () =>{
+        let conn;
+        try {
+          conn = await cachePool.getConnection();
+          conn.query(`insert into usernames values('${decoded.username}')`).then(rows => {
+            log(decoded.username+' has successfully signed on');
+            res.status(200).json({
+              METHOD:"SIGNON",
+              ERR: decoded.signoninfo.substr(0, decoded.signoninfo.indexOf(';')) + ";00;" + decoded.signoninfo.substr(decoded.signoninfo.indexOf(';')+1, decoded.signoninfo.length)
+            })
+          }).catch(err => {
+            log(decoded.username+' has failed to signed on');
+            res.status(400).json({
+              METHOD:"SIGNON",
+              ERR: decoded.signoninfo.substr(0, decoded.signoninfo.indexOf(';')) + ";12;" + decoded.signoninfo.substr(decoded.signoninfo.indexOf(';')+1, decoded.signoninfo.length)
+            })
+          })
+        } catch (err) {
+          throw err;
+        } finally {
+          if (conn) {
+            return conn.end();
+          }
+        }
+      }
+      if (decoded) {
+        addUsername()
+      }
+    }else{
+      log('JWT for signon is not valid');
+      res.status(400).json({ // If JWT not valid
+        METHOD:"SIGNON",
+        ERR:"30"
+      })
+    }
+  });
+});
+
+// @route   POST api/bmi/signoff
+router.post("/signoff", (req, res) => {
+  jwt.verify(req.body.token, secretOrKey, (err, decoded) => {
+    if (!err) { // If JWT valid
+      const delUsername = async () =>{
+        let conn;
+        try {
+          conn = await cachePool.getConnection();
+          conn.query(`delete from usernames where username= '${decoded.username}'`).then(rows => {
+            log(decoded.username+' has successfully signed off');
+            res.status(200).json({
+              METHOD:"SIGNOFF",
+              ERR: decoded.signoffinfo.substr(0, decoded.signoffinfo.indexOf(';')) + ";00;" + decoded.signoffinfo.substr(decoded.signoffinfo.indexOf(';')+1, decoded.signoffinfo.length)
+            })
+          }).catch(err => {
+            log(decoded.username+' has failed to signed off');
+            res.status(400).json({
+              METHOD:"SIGNOFF",
+              ERR: decoded.signoffinfo.substr(0, decoded.signoffinfo.indexOf(';')) + ";12;" + decoded.signoffinfo.substr(decoded.signoffinfo.indexOf(';')+1, decoded.signoffinfo.length)
+            })
+          })
+        } catch (err) {
+          throw err;
+        } finally {
+          if (conn) {
+            return conn.end();
+          }
+        }
+      }
+      if (decoded) {
+        delUsername()
+      }
+    }else{
+      log('JWT for signon is not valid');
+      res.status(400).json({ // If JWT not valid
+        METHOD:"SIGNOFF",
+        ERR:"30"
+      })
+    }
+  });
+});
+
+// @route   POST api/bmi/inquiry
+router.post('/inquiry/', (req, res) => { // Get data from BMI system
+  jwt.verify(req.body.token, secretOrKey, (err, decoded) => {
+    getUsernamesCache(decoded.username).then(a=>{ // If user has been signed on
+      if (!err) { // If JWT valid
+        inquiry.makeInquiry(decoded.vano).then(data => {
+          if (data.code === 200) {
+            log(decoded.username+" made inquiry for vano: "+decoded.vano);
+            res.status(200).json({
+              CCY: "360",
+              METHOD:"INQUIRY",
+              BILL: data.response.total,
+              DESCRIPTION: "Tagihan "+data.response.items[0].item_name,
+              DESCRIPTION2: "",
+              ERR:"00",
+              CUSTNAME: data.response.customer_name
+            })
+          }else if (data.code === 400 || data.code === 12 || data.code === 13 || data.code === 15 || data.code === 16 || data.code === 30 || data.code === 88 || data.code === 99){
+            log(decoded.username+" failed to make inquiry for vano: "+decoded.vano);
+            res.status(400).json({
+              CCY: "360",
+              METHOD:"INQUIRY",
+              BILL: "",
+              DESCRIPTION: data.response,
+              DESCRIPTION2: "",
+              ERR:"01",
+              CUSTNAME: ""
+            });
+          }
+        }).catch(err => {
+          res.status(400).json(err)
+        })
+      }else{
+        res.status(400).json({ // If JWT not valid
+          CCY: "360",
+          METHOD:"INQUIRY",
+          BILL: "",
+          DESCRIPTION: err,
+          DESCRIPTION2: "",
+          ERR:"30",
+          CUSTNAME: ""
+        })
+      }
+    }).catch(b=>console.log(b.message))
+  });
+});
+
+// @route   POST api/bmi/payment
+router.post('/payment/', (req, res) => {
+  jwt.verify(req.body.token, secretOrKey, (err, decoded) => {
+    getUsernamesCache(decoded.username).then(a=>{ // If user has been signed on
+      // console.log(a.username)
+      if (!err) { // If JWT valid
+        payment.makePayment(decoded.vano).then(data => {
+          if (data.code === 200) {
+            log(decoded.username+" made payment for vano: "+decoded.vano);
+            res.status(200).json({
+              CCY: "360",
+              METHOD:"PAYMENT",
+              BILL: data.response.paid_amount,
+              DESCRIPTION: "Pembayaran "+decoded.vano,
+              DESCRIPTION2: data.response.remarks,
+              ERR:"00",
+              CUSTNAME: data.response.party_name
+            })
+          }else if (data.code === 400 || data.code === 12 || data.code === 13 || data.code === 15 || data.code === 16 || data.code === 30 || data.code === 88 || data.code === 99){
+            log(decoded.username+" failed to make payment for vano: "+decoded.vano);
+            res.status(400).json({
+              CCY: "360",
+              METHOD:"PAYMENT",
+              BILL: "",
+              DESCRIPTION: data.response,
+              DESCRIPTION2: "",
+              ERR:"01",
+              CUSTNAME: ""
+            });
+          }
+        }).catch(err => {
+          res.status(400).json(err)
+        })
+      }else{
+        res.status(400).json({ // If JWT not valid
+          CCY: "360",
+          METHOD:"PAYMENT",
+          BILL: "",
+          DESCRIPTION: err,
+          DESCRIPTION2: "",
+          ERR:"30",
+          CUSTNAME: ""
+        })
+      }
+    }).catch(b=>console.log(b.message))
+  })
+});
+
+// @route   POST api/bmi/reversal
+router.post('/reversal/', (req, res) => {
+  jwt.verify(req.body.token, secretOrKey, (err, decoded) => {
+    getUsernamesCache(decoded.username).then(a=>{ // If user has been signed on
+      // console.log(a.username)
+      if (!err) { // If JWT valid
+        payment.cancelPayment(decoded.vano).then(data => {
+          if (data.code === 200) {
+            log(decoded.username+" made reversal for vano: "+decoded.vano);
+            res.status(200).json({
+              METHOD:"REVERSAL",
+              ERR:"00"
+            })
+          }else if (data.code === 400 || data.code === 12 || data.code === 13 || data.code === 15 || data.code === 16 || data.code === 30 || data.code === 88 || data.code === 99){
+            log(decoded.username+" failed to make reversal for vano: "+decoded.vano);
+            res.status(400).json({
+              METHOD:"REVERSAL",
+              ERR:"01",
+            });
+          }
+        }).catch(err => {
+          res.status(400).json(err)
+        })
+      }else{
+        res.status(400).json({ // If JWT not valid
+          METHOD:"REVERSAL",
+          ERR:"30",
+        })
+      }
+    }).catch(b=>console.log(b.message))
+  })
+});
+
+module.exports = router;

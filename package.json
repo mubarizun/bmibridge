@@ -1,0 +1,33 @@
+{
+  "name": "bmi-bridge",
+  "version": "0.0.1",
+  "description": "REST API to bridge BMI sytem",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "server": "nodemon server.js"
+  },
+  "keywords": [
+    "REST",
+    "API"
+  ],
+  "author": "zikrimarquel",
+  "license": "MIT",
+  "dependencies": {
+    "axios": "^0.18.0",
+    "body-parser": "^1.18.3",
+    "cors": "^2.8.4",
+    "express": "^4.16.3",
+    "jsonwebtoken": "^8.2.2",
+    "log-to-file": "^1.3.0",
+    "mariadb": "^2.0.2-rc",
+    "needle": "^2.2.1",
+    "node-cache": "^4.2.0",
+    "redis": "^2.8.0",
+    "request": "^2.87.0",
+    "validator": "^10.3.0"
+  },
+  "devDependencies": {
+    "nodemon": "^1.17.5"
+  }
+}
