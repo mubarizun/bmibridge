@@ -3,7 +3,7 @@ const bodyParser = require('body-parser')
 const cors = require('cors')
 const syncData = require('./routes/utils/sync_data')
 const erpnext = require('./routes/utils/erpnext')
-process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0' // DELETE ON PRODUCTION!!!!
+
 // Routes
 const bmi = require('./routes/api/bmi')
 
@@ -29,5 +29,3 @@ app.listen(port, () => {
     setInterval(()=>syncData.sync(), 5000) // sync with erpnext mysql every 5 seconds
     setInterval(()=>erpnext.login(), 3600000) // login to erpnext website every 1 hour
 })
-
-// MPWD='bm!Pa$$word' USR=Administrator PWD=passTermudah1 PORT=9876 secretOrKey=secret node server.js

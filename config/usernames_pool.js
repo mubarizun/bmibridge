@@ -1,8 +1,8 @@
 const mariadb = require('mariadb');
 const usernamesPool = mariadb.createPool({
-    host: '45.77.240.8', 
+    host: process.env.usernamesPool, 
     user:'zikri', 
-    database:'myCache', 
+    database:process.env.cacheDB, 
     password: process.env.MPWD,
     connectionLimit: 5
 });
